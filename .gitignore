@@ -17,15 +17,11 @@ data/
 debug-*.log
 pdf_sample_extract.txt
 
-# SRPE API exploration probes (not part of production pipeline)
-scripts/probe_*.py
-scripts/find_file_chunks.py
-scripts/grep_download_js.py
-scripts/list_dev_chunks.py
+# v1: not part of the published ETL pipeline (local helpers / v2 dashboard work)
+scripts/
+visualize/
 
-# Excel workbook may contain DB credentials in connection strings (v2)
-visualize/*.xlsx
-visualize/*.xlsm
+# Excel workbook may contain DB credentials in connection strings
 SRPE_Dashboard.xlsx
 *.xlsx
 *.xlsm

@@ -74,9 +74,7 @@ SRPE Website / Local PDF
 ├── extract/                # PDF parser, SRPE client, ingestion log
 ├── transform/              # Cleaners, bilingual payment mapper
 ├── load/                   # schema.sql, views.sql, loader
-├── config/settings.yaml    # Non-secret paths & settings
-├── scripts/                # setup_load.ps1, setup_views.ps1
-└── visualize/              # Power Query guide (v2)
+└── config/settings.yaml    # Non-secret paths & settings
 ```
 
 ---
@@ -105,18 +103,11 @@ copy .env.example .env
 # Edit .env — set SRPE_DB_PASSWORD to your postgres password
 ```
 
-Create database and load schema + data:
+Create database, schema, views, and load data:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\setup_load.ps1
-```
-
-Or step by step:
-
-```powershell
-.\.venv\Scripts\python run_load.py --create-db --init-db
+.\.venv\Scripts\python run_load.py --create-db --init-db --init-views
 .\.venv\Scripts\python run_load.py
-.\.venv\Scripts\python run_load.py --init-views
 ```
 
 ### 4. Run the pipeline
@@ -196,9 +187,8 @@ SQL views for analytics (v2 dashboard):
 
 ## Visualize (v2)
 
-See [`visualize/EXCEL_SETUP.md`](visualize/EXCEL_SETUP.md).
-
-Excel's native PostgreSQL connector requires the **Npgsql** provider. If you see *"此連接器需要安裝一個或多個其他元件"*, install it from Microsoft's Power Query prerequisites, or use ODBC as documented in the setup guide.
+Planned: Excel Power Query dashboard on `vw_sales_detail` and related SQL views.  
+Excel's PostgreSQL connector requires the **Npgsql** provider on Windows.
 
 ---
 
