@@ -1,0 +1,31 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Secrets & local config
+.env
+
+# Data artifacts (reproducible via pipeline)
+data/
+
+# IDE / editor
+.cursor/
+
+# Dev scratch files
+debug-*.log
+pdf_sample_extract.txt
+
+# SRPE API exploration probes (not part of production pipeline)
+scripts/probe_*.py
+scripts/find_file_chunks.py
+scripts/grep_download_js.py
+scripts/list_dev_chunks.py
+
+# Excel workbook may contain DB credentials in connection strings (v2)
+visualize/*.xlsx
+visualize/*.xlsm
+SRPE_Dashboard.xlsx
+*.xlsx
+*.xlsm

@@ -1,0 +1,28 @@
+# SRPE ETL pipeline settings (no secrets in this file)
+
+paths:
+  raw_pdf_dir: data/raw/pdfs
+  staging_dir: data/staging
+  transformed_dir: data/transformed
+  ingestion_log_db: data/ingestion_log.db
+
+database:
+  host: localhost
+  port: 5432
+  name: srpe_etl
+  # Credentials come from environment variables:
+  # SRPE_DB_USER, SRPE_DB_PASSWORD
+  # Or set DATABASE_URL=postgresql://user:pass@localhost:5432/srpe_etl
+
+extract:
+  download_retries: 3
+  retry_backoff_seconds: 2
+  request_timeout_seconds: 60
+  default_language: en
+  request_delay_seconds: 1.0
+
+srpe:
+  base_url: https://www.srpe.gov.hk
+  opip_url: https://www.srpe.gov.hk/opip
+  api_base_url: https://www.srpe.gov.hk/api/SrpeWebService
+  user_agent: SRPE-ETL-Portfolio/0.1 (educational project)
