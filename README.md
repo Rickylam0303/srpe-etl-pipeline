@@ -2,8 +2,8 @@
 
 End-to-end ETL pipeline that ingests **Hong Kong SRPE** (一手住宅物業銷售資訊網) Register of Transactions PDFs, cleans bilingual transaction data, loads a PostgreSQL star schema, and prepares SQL views for analytics dashboards.
 
-> **v1 (current):** Extract → Transform → Load — production pipeline complete  
-> **v2 (planned):** Excel + Power Query dashboard on top of PostgreSQL views
+> **v1:** Extract → Transform → Load  
+> **v2:** Excel + Power Query dashboard on PostgreSQL views
 
 ---
 
@@ -47,7 +47,7 @@ SRPE Website / Local PDF
    PostgreSQL (srpe_etl)
    dim_development │ dim_property │ dim_payment_term │ fact_sales
          │
-         ▼ (v2)
+         ▼
    Excel Power Query → vw_sales_detail
 ```
 
@@ -60,7 +60,7 @@ SRPE Website / Local PDF
 | Extract | Python, pdfplumber, Playwright, httpx, SQLite |
 | Transform | pandas |
 | Load | PostgreSQL 18, psycopg3, star schema |
-| Visualize (v2) | Excel Power Query, SQL views |
+| Visualize | Excel Power Query, SQL views, pivot dashboard |
 | Config | YAML, `.env` (secrets) |
 
 ---
@@ -74,7 +74,8 @@ SRPE Website / Local PDF
 ├── extract/                # PDF parser, SRPE client, ingestion log
 ├── transform/              # Cleaners, bilingual payment mapper
 ├── load/                   # schema.sql, views.sql, loader
-└── config/settings.yaml    # Non-secret paths & settings
+├── config/settings.yaml    # Non-secret paths & settings
+└── visualize/              # Power Query M code + dashboard screenshot
 ```
 
 ---
@@ -145,11 +146,53 @@ Star schema tables:
 
 **Transaction status:** `asp_signed` · `terminated` · `pasp_only`
 
-SQL views for analytics (v2 dashboard):
+SQL views for the dashboard:
 
 - `vw_sales_detail` — denormalized transaction grain
 - `vw_monthly_sales` — monthly aggregates
 - `vw_block_summary` — per-block metrics
+
+## Dashboard (v2)
+
+Live Excel dashboard connected to PostgreSQL via Power Query (`vw_sales_detail`).
+
+<!-- TODO: Add screenshot — save as visualize/dashboard.png -->
+![SRPE sales dashboard](visualize/dashboard.png)
+
+| KPI | Sample value (THE PAVILIA FARM III) |
+|-----|-------------------------------------|
+| Total transactions | 1,145 |
+| ASP signed | 654 |
+| Terminated (撻訂) | 483 |
+| Termination rate | ~42% |
+| Avg price (HKD) | ~$15.5M |
+
+**Charts in the dashboard**
+
+- Monthly transaction volume (`pasp_month`)
+- Average price by block (`block_name` × `final_price_hkd`)
+- Payment method mix (`payment_category`)
+
+### Connect Excel to PostgreSQL
+
+1. Install the **Npgsql** provider (required on Windows for Excel's PostgreSQL connector).
+2. **Data → Get Data → From PostgreSQL database**
+3. Server: `127.0.0.1` · Database: `srpe_etl` · User: `postgres`
+4. Load `vw_sales_detail` as a **Table** (not connection-only), then insert pivot tables.
+
+Power Query M starter: [`visualize/power_query_sales_detail.m`](visualize/power_query_sales_detail.m)
+
+> You do **not** need a polished layout in the repo — a clear screenshot and working pivots are enough for a portfolio. Refine formatting later if you want.
+
+---
+
+## Key insights
+
+<!-- TODO: Replace with your own 2–3 bullet takeaways from the dashboard -->
+
+- **Insight 1:** _[e.g. Which tower has the highest average price?]_
+- **Insight 2:** _[e.g. What is the termination rate trend by month?]_
+- **Insight 3:** _[e.g. Cash vs stage payment split and what it implies]_
 
 ---
 
@@ -179,16 +222,10 @@ SQL views for analytics (v2 dashboard):
 ## Roadmap
 
 - [x] v1 — Extract, Transform, Load
-- [ ] v2 — Excel Power Query dashboard + screenshots
+- [x] v2 — Excel Power Query dashboard
+- [ ] Optional — polish dashboard layout / add `dashboard.png` screenshot
 - [ ] Optional — text fallback parser for PDF pages pdfplumber cannot table-extract
 - [ ] Optional — batch index over multiple HK developments
-
----
-
-## Visualize (v2)
-
-Planned: Excel Power Query dashboard on `vw_sales_detail` and related SQL views.  
-Excel's PostgreSQL connector requires the **Npgsql** provider on Windows.
 
 ---
 
@@ -199,6 +236,14 @@ MIT — see [LICENSE](LICENSE).
 ---
 
 ## Author
+
+<!-- TODO: Your name -->
+**Name:** _[Your name]_
+
+<!-- TODO: Links -->
+- GitHub: _[https://github.com/your-handle]_
+- LinkedIn: _[https://linkedin.com/in/your-profile]_
+- Email: _[you@email.com]_
 
 Portfolio project — Data Analyst → Data Engineer path.  
 Data source: [SRPE](https://www.srpe.gov.hk) (public government data).

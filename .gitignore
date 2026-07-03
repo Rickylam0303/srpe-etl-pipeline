@@ -17,11 +17,15 @@ data/
 debug-*.log
 pdf_sample_extract.txt
 
-# v1: not part of the published ETL pipeline (local helpers / v2 dashboard work)
+# Local dev helpers (not published)
 scripts/
-visualize/
 
-# Excel workbook may contain DB credentials in connection strings
+# Visualize: publish assets; keep local setup guide and workbooks private
+visualize/EXCEL_SETUP.md
+visualize/*.xlsx
+visualize/*.xlsm
+
+# Excel workbooks may contain DB connection credentials
 SRPE_Dashboard.xlsx
 *.xlsx
 *.xlsm
