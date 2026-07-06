@@ -199,7 +199,7 @@ See [`load/sample_queries.sql`](load/sample_queries.sql) for ready-to-run analyt
 
 Live **Excel** dashboard connected to PostgreSQL via **Power Query** on `vw_sales_detail`.
 
-![SRPE sales dashboard](visualize/dashboard.png)
+> **Screenshot:** Export your dashboard as `visualize/dashboard.png` (see [`visualize/README.md`](visualize/README.md)). A working pivot setup is enough for portfolio review.
 
 ### KPI snapshot — THE PAVILIA FARM III
 
@@ -261,25 +261,6 @@ These are the kinds of metrics property research, agency data teams, and develop
 4. **SQLite ingestion log** — lightweight audit trail (hash, page count, status); mirrors in-house ingestion workflows.
 5. **Secrets outside repo** — credentials in `.env`, never committed.
 
----
-
-## Roadmap
-
-- [x] v1 — Extract, Transform, Load
-- [x] v2 — Excel Power Query dashboard
-- [x] Portfolio README, sample SQL, schema diagram
-- [x] Add `visualize/dashboard.png` screenshot
-- [ ] Optional — text fallback parser for pages pdfplumber cannot table-extract
-- [ ] Optional — batch index over multiple HK developments
-
----
-
-## Interview talking points (2-minute pitch)
-
-1. **Problem** — SRPE publishes property transaction truth as bilingual PDFs, not clean tables.
-2. **Approach** — modular ETL (extract / transform / load), star schema, UPSERT for amendments.
-3. **Outcome** — 1,145 transactions queryable in PostgreSQL; Excel dashboard for monthly volume, termination rate, block pricing.
-4. **Why proptech** — housing is 衣食住行; this data directly affects pricing, sales strategy, and market research.
 
 ---
 
@@ -295,6 +276,5 @@ MIT — see [LICENSE](LICENSE).
 
 - GitHub: [Rickylam0303](https://github.com/Rickylam0303)
 - Email: rickylam0303@gmail.com
-- Portfolio: Data Analyst → Data Engineer path · Hong Kong proptech / real estate data
 
 Data source: [SRPE](https://www.srpe.gov.hk) (public government data).
