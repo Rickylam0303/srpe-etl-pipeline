@@ -199,7 +199,7 @@ See [`load/sample_queries.sql`](load/sample_queries.sql) for ready-to-run analyt
 
 Live **Excel** dashboard connected to PostgreSQL via **Power Query** on `vw_sales_detail`.
 
-> **Screenshot:** Export your dashboard as `visualize/dashboard.png` (see [`visualize/README.md`](visualize/README.md)). A working pivot setup is enough for portfolio review.
+![SRPE sales dashboard](visualize/dashboard.png)
 
 ### KPI snapshot — THE PAVILIA FARM III
 
@@ -268,7 +268,7 @@ These are the kinds of metrics property research, agency data teams, and develop
 - [x] v1 — Extract, Transform, Load
 - [x] v2 — Excel Power Query dashboard
 - [x] Portfolio README, sample SQL, schema diagram
-- [ ] Add `visualize/dashboard.png` screenshot
+- [x] Add `visualize/dashboard.png` screenshot
 - [ ] Optional — text fallback parser for pages pdfplumber cannot table-extract
 - [ ] Optional — batch index over multiple HK developments
 
