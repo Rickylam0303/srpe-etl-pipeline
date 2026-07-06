@@ -1,22 +1,33 @@
 # SRPE Residential Sales ETL Pipeline
 
-End-to-end ETL pipeline that ingests **Hong Kong SRPE** (一手住宅物業銷售資訊網) Register of Transactions PDFs, cleans bilingual transaction data, loads a PostgreSQL star schema, and prepares SQL views for analytics dashboards.
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](requirements.txt)
+[![PostgreSQL](https://img.shields.io/badge/database-PostgreSQL-336791.svg)](load/schema.sql)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **v1:** Extract → Transform → Load  
-> **v2:** Excel + Power Query dashboard on PostgreSQL views
+End-to-end **ETL pipeline** for **Hong Kong SRPE** (一手住宅物業銷售資訊網) Register of Transactions PDFs — built for **proptech / real estate analytics** portfolios.
+
+> **v1** — Extract → Transform → Load  
+> **v2** — Excel + Power Query dashboard on PostgreSQL views
+
+**Live demo data:** THE PAVILIA FARM III (柏傲莊 III) — **706-page PDF**, **1,145 transactions**
 
 ---
 
 ## Why this project?
 
-Hong Kong pre-sale residential transaction data is published as **large bilingual PDFs** per development. This project automates:
+Hong Kong pre-sale residential transaction data is published as **large bilingual PDFs** per development — messy, amended over time, and hard to analyse at scale.
 
-- Downloading RT PDFs from the official SRPE website
-- Parsing tabular transaction records (columns A–H)
-- Normalizing prices, dates, payment terms, and transaction status (including 撻訂 / amendments)
-- Loading a **star schema** in PostgreSQL with **UPSERT** semantics for data refreshes
+This project automates the full data path:
 
-Sample development: **THE PAVILIA FARM III (柏傲莊 III)** — 706-page PDF, **1,145 transactions**.
+| Challenge | Solution |
+|-----------|----------|
+| PDFs instead of APIs | `pdfplumber` table extraction + bilingual column parsing |
+| Amendments & 撻訂 (terminations) | Idempotent **UPSERT** on `natural_key` |
+| Mixed 中文 / English payment terms | Regex-based `payment_mapper` → `standard_category` |
+| Repeat ingestion | **SQLite ingestion log** (file hash, page count, status) |
+| Reporting for business users | SQL views → **Excel Power Query** live-refresh dashboard |
+
+**Portfolio angle:** Demonstrates the **Data Analyst → Data Engineer** path — from messy public property data to a queryable warehouse and KPI dashboard.
 
 ---
 
@@ -48,8 +59,52 @@ SRPE Website / Local PDF
    dim_development │ dim_property │ dim_payment_term │ fact_sales
          │
          ▼
-   Excel Power Query → vw_sales_detail
+   SQL views ──► Excel Power Query (vw_sales_detail)
 ```
+
+---
+
+## Star schema
+
+```mermaid
+erDiagram
+    dim_development ||--o{ dim_property : contains
+    dim_development ||--o{ fact_sales : has
+    dim_property ||--o{ fact_sales : sold_as
+    dim_payment_term ||--o{ fact_sales : uses
+
+    dim_development {
+        int development_key PK
+        text development_name_en
+        text development_name_tc
+        text phase_label
+    }
+    dim_property {
+        int property_key PK
+        int development_key FK
+        text block_name
+        text floor
+        text unit
+        text property_natural_key UK
+    }
+    dim_payment_term {
+        int payment_term_key PK
+        text standard_category UK
+    }
+    fact_sales {
+        bigint sale_key PK
+        text natural_key UK
+        date pasp_date
+        date asp_date
+        date termination_date
+        bigint price_hkd
+        text transaction_status
+    }
+```
+
+**Natural key:** `development|block|floor|unit|pasp_date` — supports safe re-load when SRPE amends prices or records 撻訂.
+
+**Transaction status values:** `asp_signed` · `terminated` · `pasp_only`
 
 ---
 
@@ -58,24 +113,30 @@ SRPE Website / Local PDF
 | Layer | Tools |
 |-------|-------|
 | Extract | Python, pdfplumber, Playwright, httpx, SQLite |
-| Transform | pandas |
-| Load | PostgreSQL 18, psycopg3, star schema |
+| Transform | pandas, bilingual payment mapper |
+| Load | PostgreSQL 18, psycopg3, star schema, UPSERT |
 | Visualize | Excel Power Query, SQL views, pivot dashboard |
-| Config | YAML, `.env` (secrets) |
+| Config | YAML (`config/settings.yaml`), `.env` (secrets) |
 
 ---
 
 ## Project structure
 
 ```
-├── run_extract.py          # CLI: local PDF or SRPE download
-├── run_transform.py        # Clean staging → transformed CSV
-├── run_load.py             # Init DB / schema / views / UPSERT load
-├── extract/                # PDF parser, SRPE client, ingestion log
-├── transform/              # Cleaners, bilingual payment mapper
-├── load/                   # schema.sql, views.sql, loader
-├── config/settings.yaml    # Non-secret paths & settings
-└── visualize/              # Power Query M code + dashboard screenshot
+├── run_extract.py              # CLI: local PDF or SRPE download
+├── run_transform.py            # Clean staging → transformed CSV
+├── run_load.py                 # Init DB / schema / views / UPSERT load
+├── extract/                    # PDF parser, SRPE client, ingestion log
+├── transform/                  # Cleaners, bilingual payment mapper
+├── load/
+│   ├── schema.sql              # Star schema DDL
+│   ├── views.sql               # Reporting views
+│   ├── sample_queries.sql      # Portfolio analytics examples
+│   └── loader.py
+├── config/settings.yaml
+└── visualize/
+    ├── power_query_sales_detail.m
+    └── README.md               # Dashboard screenshot instructions
 ```
 
 ---
@@ -86,12 +147,13 @@ SRPE Website / Local PDF
 
 - Python 3.11+
 - PostgreSQL 14+ (tested on PostgreSQL 18)
-- Playwright browsers (for SRPE download mode)
+- Playwright browsers (for SRPE download mode only)
 
 ### 2. Install
 
 ```powershell
-cd "ETL Pipeline"
+git clone https://github.com/Rickylam0303/srpe-etl-pipeline.git
+cd srpe-etl-pipeline
 python -m venv .venv
 .\.venv\Scripts\pip install -r requirements.txt
 .\.venv\Scripts\playwright install chromium
@@ -101,10 +163,8 @@ python -m venv .venv
 
 ```powershell
 copy .env.example .env
-# Edit .env — set SRPE_DB_PASSWORD to your postgres password
+# Edit .env — set SRPE_DB_PASSWORD
 ```
-
-Create database, schema, views, and load data:
 
 ```powershell
 .\.venv\Scripts\python run_load.py --create-db --init-db --init-views
@@ -129,45 +189,32 @@ Create database, schema, views, and load data:
 .\.venv\Scripts\python run_load.py
 ```
 
+### 5. Sample SQL
+
+See [`load/sample_queries.sql`](load/sample_queries.sql) for ready-to-run analytics queries (status mix, monthly volume, block pricing, payment mix).
+
 ---
-
-## Data model
-
-Star schema tables:
-
-| Table | Role |
-|-------|------|
-| `dim_development` | Development / phase metadata |
-| `dim_property` | Block, floor, unit |
-| `dim_payment_term` | Standardized payment category |
-| `fact_sales` | Transaction facts (price, dates, status) |
-
-**Natural key:** `development|block|floor|unit|pasp_date` — supports idempotent UPSERT when SRPE amends or terminates sales.
-
-**Transaction status:** `asp_signed` · `terminated` · `pasp_only`
-
-SQL views for the dashboard:
-
-- `vw_sales_detail` — denormalized transaction grain
-- `vw_monthly_sales` — monthly aggregates
-- `vw_block_summary` — per-block metrics
 
 ## Dashboard (v2)
 
-Live Excel dashboard connected to PostgreSQL via Power Query (`vw_sales_detail`).
+Live **Excel** dashboard connected to PostgreSQL via **Power Query** on `vw_sales_detail`.
 
-<!-- TODO: Add screenshot — save as visualize/dashboard.png -->
-![SRPE sales dashboard](visualize/dashboard.png)
+> **Screenshot:** Export your dashboard as `visualize/dashboard.png` (see [`visualize/README.md`](visualize/README.md)). A working pivot setup is enough for portfolio review.
 
-| KPI | Sample value (THE PAVILIA FARM III) |
-|-----|-------------------------------------|
+### KPI snapshot — THE PAVILIA FARM III
+
+| KPI | Value |
+|-----|-------|
 | Total transactions | 1,145 |
 | ASP signed | 654 |
 | Terminated (撻訂) | 483 |
-| Termination rate | ~42% |
+| PASP only | 8 |
+| **Termination rate** | **~42%** |
 | Avg price (HKD) | ~$15.5M |
+| Payment: Cash plan | 763 |
+| Payment: Stage payment | 375 |
 
-**Charts in the dashboard**
+### Charts in the dashboard
 
 - Monthly transaction volume (`pasp_month`)
 - Average price by block (`block_name` × `final_price_hkd`)
@@ -178,34 +225,31 @@ Live Excel dashboard connected to PostgreSQL via Power Query (`vw_sales_detail`)
 1. Install the **Npgsql** provider (required on Windows for Excel's PostgreSQL connector).
 2. **Data → Get Data → From PostgreSQL database**
 3. Server: `127.0.0.1` · Database: `srpe_etl` · User: `postgres`
-4. Load `vw_sales_detail` as a **Table** (not connection-only), then insert pivot tables.
+4. Load `vw_sales_detail` as a **Table** (not connection-only), then build pivot tables.
 
 Power Query M starter: [`visualize/power_query_sales_detail.m`](visualize/power_query_sales_detail.m)
 
-> You do **not** need a polished layout in the repo — a clear screenshot and working pivots are enough for a portfolio. Refine formatting later if you want.
+---
+
+## Key insights (proptech)
+
+From THE PAVILIA FARM III dashboard analysis:
+
+1. **High termination rate (~42%)** — nearly half of recorded transactions ended in 撻訂; launch-period sales volume peaked before tapering, typical of hot new-development cycles in HK.
+2. **Tower-level price dispersion** — **Tower 8 (8A)** shows the highest average transacted price (~**HK$18.1M**), useful for block-level pricing and inventory strategy.
+3. **Payment mix skew** — cash-plan transactions dominate over stage-payment plans; relevant for developer cash-flow and mortgage-risk reporting.
+
+These are the kinds of metrics property research, agency data teams, and developer sales offices track from SRPE registers.
 
 ---
 
-## Key insights
+## SQL views
 
-<!-- TODO: Replace with your own 2–3 bullet takeaways from the dashboard -->
-
-- **Insight 1:** _[e.g. Which tower has the highest average price?]_
-- **Insight 2:** _[e.g. What is the termination rate trend by month?]_
-- **Insight 3:** _[e.g. Cash vs stage payment split and what it implies]_
-
----
-
-## Sample results (THE PAVILIA FARM III)
-
-| Metric | Value |
-|--------|-------|
-| Transactions loaded | 1,145 |
-| ASP signed | 654 |
-| Terminated (撻訂) | 483 |
-| PASP only | 8 |
-| Payment: Cash plan | 763 |
-| Payment: Stage payment | 375 |
+| View | Purpose |
+|------|---------|
+| `vw_sales_detail` | Denormalized transaction grain for Power Query / BI |
+| `vw_monthly_sales` | Monthly volume, termination rate, avg price |
+| `vw_block_summary` | Per-block transaction and pricing metrics |
 
 ---
 
@@ -214,7 +258,7 @@ Power Query M starter: [`visualize/power_query_sales_detail.m`](visualize/power_
 1. **One PDF per development** — matches SRPE publishing model; pipeline is development-scoped.
 2. **UPSERT on `natural_key`** — handles price revisions and 撻訂 without duplicate rows.
 3. **Bilingual payment mapping** — regex rules map 中文 / English terms to a single `standard_category`.
-4. **SQLite ingestion log** — lightweight audit trail of extracted files (hash, page count, status).
+4. **SQLite ingestion log** — lightweight audit trail (hash, page count, status); mirrors in-house ingestion workflows.
 5. **Secrets outside repo** — credentials in `.env`, never committed.
 
 ---
@@ -223,9 +267,19 @@ Power Query M starter: [`visualize/power_query_sales_detail.m`](visualize/power_
 
 - [x] v1 — Extract, Transform, Load
 - [x] v2 — Excel Power Query dashboard
-- [ ] Optional — polish dashboard layout / add `dashboard.png` screenshot
-- [ ] Optional — text fallback parser for PDF pages pdfplumber cannot table-extract
+- [x] Portfolio README, sample SQL, schema diagram
+- [ ] Add `visualize/dashboard.png` screenshot
+- [ ] Optional — text fallback parser for pages pdfplumber cannot table-extract
 - [ ] Optional — batch index over multiple HK developments
+
+---
+
+## Interview talking points (2-minute pitch)
+
+1. **Problem** — SRPE publishes property transaction truth as bilingual PDFs, not clean tables.
+2. **Approach** — modular ETL (extract / transform / load), star schema, UPSERT for amendments.
+3. **Outcome** — 1,145 transactions queryable in PostgreSQL; Excel dashboard for monthly volume, termination rate, block pricing.
+4. **Why proptech** — housing is 衣食住行; this data directly affects pricing, sales strategy, and market research.
 
 ---
 
@@ -237,13 +291,10 @@ MIT — see [LICENSE](LICENSE).
 
 ## Author
 
-<!-- TODO: Your name -->
-**Name:** _[Your name]_
+**LAM Wai Kit (Ricky)**
 
-<!-- TODO: Links -->
-- GitHub: _[https://github.com/your-handle]_
-- LinkedIn: _[https://linkedin.com/in/your-profile]_
-- Email: _[you@email.com]_
+- GitHub: [Rickylam0303](https://github.com/Rickylam0303)
+- Email: rickylam0303@gmail.com
+- Portfolio: Data Analyst → Data Engineer path · Hong Kong proptech / real estate data
 
-Portfolio project — Data Analyst → Data Engineer path.  
 Data source: [SRPE](https://www.srpe.gov.hk) (public government data).
