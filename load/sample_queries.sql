@@ -22,7 +22,7 @@ SELECT
 FROM vw_monthly_sales
 ORDER BY pasp_month;
 
--- 3) Top blocks by average price (proptech insight: Tower 8 premium)
+-- 3) Top blocks by ASP-signed average contract price (not an area-adjusted premium)
 SELECT
   block_name,
   transaction_count,
@@ -38,7 +38,7 @@ LIMIT 10;
 SELECT
   payment_category,
   COUNT(*) AS transaction_count,
-  ROUND(AVG(final_price_hkd)) AS avg_price_hkd
+  ROUND(AVG(final_price_hkd) FILTER (WHERE transaction_status = 'asp_signed')) AS avg_price_hkd
 FROM vw_sales_detail
 GROUP BY payment_category
 ORDER BY transaction_count DESC;
@@ -60,12 +60,12 @@ WHERE transaction_status = 'terminated'
 ORDER BY termination_date DESC NULLS LAST, pasp_date DESC
 LIMIT 20;
 
--- 6) Launch-month peak check
+-- 6) Highest-volume PASP months, separately per development
 SELECT
+  development_name_en,
   pasp_month,
   transaction_count,
-  ROUND(AVG(final_price_hkd)) AS avg_price_hkd
+  avg_price_hkd
 FROM vw_monthly_sales
-GROUP BY pasp_month
-ORDER BY transaction_count DESC
+ORDER BY transaction_count DESC, development_name_en, pasp_month
 LIMIT 3;

@@ -6,7 +6,7 @@ import re
 from datetime import date, datetime
 
 DATE_INPUT_FORMAT = "%d/%m/%Y"
-PRICE_PATTERN = re.compile(r"[\d,]+")
+PRICE_PATTERN = re.compile(r"^\$?\s*(\d{1,3}(?:,\d{3})+|\d+)\s*$")
 REVISED_PRICE_PATTERN = re.compile(
   r"(?:更改為|adjusted to)\s*\$?([\d,]+)",
   re.IGNORECASE,
@@ -17,7 +17,7 @@ def _as_optional_text(value: str | float | None) -> str | None:
   if value is None:
     return None
   text = str(value).strip()
-  if not text or text.lower() == "nan":
+  if not text or text.lower() in {'nan', 'none', '<na>', 'nat'}:
     return None
   return text
 
@@ -26,20 +26,37 @@ def parse_price_hkd(value: str | None) -> int | None:
   text = _as_optional_text(value)
   if not text:
     return None
-  match = PRICE_PATTERN.search(text.replace("$", ""))
+  match = PRICE_PATTERN.fullmatch(text)
   if not match:
     return None
-  return int(match.group(0).replace(",", ""))
+  price = int(match.group(1).replace(",", ""))
+  return price if price > 0 else None
 
 
 def parse_revised_price_hkd(price_revision_raw: str | None) -> int | None:
   text = _as_optional_text(price_revision_raw)
   if not text:
     return None
-  match = REVISED_PRICE_PATTERN.search(text)
-  if not match:
-    return None
-  return int(match.group(1).replace(",", ""))
+  events = re.findall(
+    r'On\s+([^\s,，]+)[,，]?\s+the price\s+adjusted to\s*\$?([\d,]+)', text, re.I)
+  english_count = len(re.findall(r'\bthe price\s+adjusted to', text, re.I))
+  if english_count and len(events) != english_count:
+    raise ValueError('price_revision_date_unresolved')
+  if not english_count:
+    events = re.findall(r'在\s*([^\s,，]+)[,，].*?更改為\s*\$?([\d,]+)', text, re.I)
+    if len(events) != len(re.findall('更改為', text)):
+      raise ValueError('price_revision_date_unresolved')
+  if not events:
+    raise ValueError('price_revision_date_unresolved')
+  dated = {}
+  for token, amount in events:
+    amended_on, price = parse_hk_date(token), parse_price_hkd(amount)
+    if amended_on is None or price is None:
+      raise ValueError('invalid_price_revision')
+    if amended_on in dated and dated[amended_on] != price:
+      raise ValueError('conflicting_price_revision')
+    dated[amended_on] = price
+  return dated[max(dated)]
 
 
 def parse_hk_date(value: str | None) -> date | None:
@@ -55,10 +72,18 @@ def parse_hk_date(value: str | None) -> date | None:
 
 
 def normalize_block_name(value: str | None) -> str | None:
-  if not value:
+  text = _as_optional_text(value)
+  if not text:
     return None
-  cleaned = re.sub(r"\s+", " ", value.strip())
+  cleaned = re.sub(r"\s+", " ", text)
   return cleaned or None
+
+
+def normalize_identifier(value) -> str | None:
+  text = _as_optional_text(value)
+  if text and re.fullmatch(r'\d+\.0', text):
+    return text[:-2]
+  return text
 
 
 def derive_transaction_status(

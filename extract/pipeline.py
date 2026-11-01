@@ -8,7 +8,7 @@ from pathlib import Path
 
 import yaml
 
-from extract.downloader import download_pdf_with_retry, register_local_pdf
+from extract.downloader import register_local_pdf
 from extract.ingestion_log import IngestionLog, IngestionRecord
 from extract.pdf_parser import parse_register_pdf, write_staging_csv
 from extract.srpe_client import DevelopmentSummary, RegisterOfTransactionsFile, SrpeClient
@@ -34,13 +34,27 @@ def extract_local_pdf(
   *,
   staging_dir: Path,
   ingestion_log: IngestionLog,
+  pdf_url: str | None = None,
+  server_last_modified: str | None = None,
+  ingestion_name: str | None = None,
 ) -> ExtractResult:
-  development, transactions = parse_register_pdf(pdf_path)
+  report_path = staging_dir / f'{pdf_path.stem}_extraction_quality.json'
+  try:
+    development, transactions = parse_register_pdf(pdf_path, report_path=report_path)
+  except Exception as exc:
+    ingestion_log.log(IngestionRecord(
+      development_name=ingestion_name or 'UNRESOLVED', file_name=pdf_path.name, pdf_url=pdf_url,
+      server_last_modified=server_last_modified, file_hash=IngestionLog.file_hash(pdf_path),
+      status='failed', page_count=None, ingested_at=IngestionLog.now_iso(),
+      error_message=str(exc)))
+    raise
   dev_csv, tx_csv = write_staging_csv(development, transactions, staging_dir)
   register_local_pdf(
     pdf_path=pdf_path,
     ingestion_log=ingestion_log,
-    development_name=development.development_name_en,
+    development_name=ingestion_name or development.development_name_en,
+    pdf_url=pdf_url,
+    server_last_modified=server_last_modified,
   )
   return ExtractResult(
     development_name=development.development_name_en,
@@ -90,19 +104,24 @@ def extract_from_srpe_development(
 
     development_name = _development_label(register_file, client, dev_id)
     latest = ingestion_log.get_latest(development_name, register_file.file_name)
+    existing_pdf = raw_pdf_dir / register_file.file_name
     if latest and not ingestion_log.should_download(
       development_name,
       register_file.file_name,
       register_file.submission_time,
-      latest.file_hash,
+      IngestionLog.file_hash(existing_pdf) if existing_pdf.exists() else None,
     ):
-      existing_pdf = raw_pdf_dir / register_file.file_name
       if existing_pdf.exists():
-        return extract_local_pdf(
+        result = extract_local_pdf(
           existing_pdf,
           staging_dir=staging_dir,
           ingestion_log=ingestion_log,
+          pdf_url=register_file.download_url,
+          server_last_modified=register_file.submission_time,
+          ingestion_name=development_name,
         )
+        result.skipped_download = True
+        return result
 
     pdf_path = raw_pdf_dir / register_file.file_name
     client.download_register_pdf(register_file, pdf_path)
@@ -126,6 +145,9 @@ def extract_from_srpe_development(
     pdf_path,
     staging_dir=staging_dir,
     ingestion_log=ingestion_log,
+    pdf_url=register_file.download_url,
+    server_last_modified=register_file.submission_time,
+    ingestion_name=development_name,
   )
   result.skipped_download = False
   return result
@@ -144,6 +166,7 @@ def extract_from_srpe_search(
   srpe_cfg = settings["srpe"]
   delay_seconds = float(extract_cfg.get("request_delay_seconds", 1.0))
   results: list[ExtractResult] = []
+  failures: list[str] = []
 
   with SrpeClient(
     language=extract_cfg.get("default_language", "en"),
@@ -167,6 +190,7 @@ def extract_from_srpe_search(
           )
         )
       except Exception as exc:
+        failures.append(str(match.dev_id))
         ingestion_log.log(
           IngestionRecord(
             development_name=_summary_label(match),
@@ -182,6 +206,11 @@ def extract_from_srpe_search(
         )
       time.sleep(delay_seconds)
 
+  if failures:
+    raise RuntimeError(
+      f"Extraction batch failed for devId(s): {', '.join(failures)}. "
+      "Successful developments were retained; inspect the ingestion log before retrying."
+    )
   return results
 
 

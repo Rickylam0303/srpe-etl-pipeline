@@ -44,7 +44,7 @@ def main() -> None:
     if not input_csv.exists():
       raise FileNotFoundError(f"Staging CSV not found: {input_csv}")
 
-    stem = input_csv.name.replace("_transactions_raw.csv", input_csv.stem)
+    stem = input_csv.name.removesuffix('_transactions_raw.csv') if input_csv.name.endswith('_transactions_raw.csv') else input_csv.stem
     output_csv = transformed_dir / f"{stem}_transactions_clean.csv"
     summary = transform_staging_csv(input_csv, output_csv)
     print("Transform complete.")
@@ -53,6 +53,7 @@ def main() -> None:
     print(f"  Dropped rows: {summary['dropped_rows']}")
     print(f"  Unmapped payment rows: {summary['unmapped_payment_rows']}")
     print(f"  Output CSV : {summary['output_csv']}")
+    print(f"  Quality report: {summary['quality_report']} ({summary['warning_count']} warnings)")
     return
 
   results = transform_all_staging_files(staging_dir, transformed_dir)
@@ -63,6 +64,7 @@ def main() -> None:
   print("Transform complete.")
   for summary in results:
     print(f"  {summary['development']}: {summary['output_rows']} rows -> {summary['output_csv']}")
+    print(f"    Quality report: {summary['quality_report']} ({summary['warning_count']} warnings)")
     if summary["unmapped_payment_rows"]:
       print(f"    Unmapped payment rows: {summary['unmapped_payment_rows']}")
 

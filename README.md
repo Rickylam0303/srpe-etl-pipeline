@@ -1,300 +1,227 @@
 # SRPE Residential Sales ETL Pipeline
 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](requirements.txt)
-[![PostgreSQL](https://img.shields.io/badge/database-PostgreSQL-336791.svg)](load/schema.sql)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+Python ETL for Hong Kong first-hand residential **Register of Transactions** PDFs.
+The project turns bilingual contract records and amendments into a PostgreSQL
+star schema, SQL reports, and an Excel Power Query dashboard.
 
-End-to-end **ETL pipeline** for **Hong Kong SRPE** (一手住宅物業銷售資訊網) Register of Transactions PDFs — built for **proptech / real estate analytics** portfolios.
+It demonstrates PDF extraction, source reconciliation, dated amendment handling,
+data-quality reporting, relational modeling, UPSERT loading and descriptive analysis.
 
-> **v1** — Extract → Transform → Load  
-> **v2** — Excel + Power Query dashboard on PostgreSQL views
+For a quick review: [one-page project brief](docs/PORTFOLIO.md),
+[resume descriptions](docs/RESUME.md), and [interview walkthrough](docs/INTERVIEW.md).
 
-**Live demo data:** THE PAVILIA FARM III (柏傲莊 III) — **706-page PDF**, **1,145 transactions**
+![Checked reference dashboard](visualize/dashboard.png)
 
----
+The image is reproducibly rendered from the checked clean CSV by
+`python -m visualize.report --png`. It is a reference report, not a screenshot
+of an Excel refresh. Excel connection and chart instructions are in
+[visualize/README.md](visualize/README.md).
 
-## Why this project?
+## Architecture and record grain
 
-Hong Kong pre-sale residential transaction data is published as **large bilingual PDFs** per development — messy, amended over time, and hard to analyse at scale.
-
-This project automates the full data path:
-
-| Challenge | Solution |
-|-----------|----------|
-| PDFs instead of APIs | `pdfplumber` table extraction + bilingual column parsing |
-| Amendments & 撻訂 (terminations) | Idempotent **UPSERT** on `natural_key` |
-| Mixed 中文 / English payment terms | Regex-based `payment_mapper` → `standard_category` |
-| Repeat ingestion | **SQLite ingestion log** (file hash, page count, status) |
-| Reporting for business users | SQL views → **Excel Power Query** live-refresh dashboard |
-
-**Portfolio angle:** Demonstrates the **Data Analyst → Data Engineer** path — from messy public property data to a queryable warehouse and KPI dashboard.
-
----
-
-## Architecture
-
-```
-SRPE Website / Local PDF
-        │
-        ▼
-┌─────────────────┐
-│  Extract        │  pdfplumber + Playwright + SQLite ingestion log
-│  run_extract.py │
-└────────┬────────┘
-         │  staging CSV
-         ▼
-┌─────────────────┐
-│  Transform      │  Pandas — dates, HKD prices, payment mapping, natural keys
-│  run_transform.py
-└────────┬────────┘
-         │  clean CSV
-         ▼
-┌─────────────────┐
-│  Load           │  PostgreSQL star schema + UPSERT
-│  run_load.py    │
-└────────┬────────┘
-         │
-         ▼
-   PostgreSQL (srpe_etl)
-   dim_development │ dim_property │ dim_payment_term │ fact_sales
-         │
-         ▼
-   SQL views ──► Excel Power Query (vw_sales_detail)
+```text
+SRPE website / local PDF
+  -> Extract: pdfplumber + optional Playwright/httpx download
+     -> staging CSV + page reconciliation JSON + SQLite ingestion state
+  -> Transform: pandas + validation + latest dated price/payment amendments
+     -> clean CSV + quality JSON (rejections and source warnings)
+  -> Load: PostgreSQL UPSERT
+     -> dim_development, dim_property, dim_payment_term, fact_sales
+  -> SQL views -> Excel Power Query / reference report
 ```
 
----
+One fact row represents one **contract record**, identified by
+`development|block|floor|unit|pasp_date`. A unit resold under a different PASP
+date has another record. Counts are neither unique units nor completed sales.
+See [schema](load/schema.sql) and [reporting views](load/views.sql).
 
-## Star schema
+Unchanged identities support price, payment and termination updates. Corrections
+to an identity field create a different key and require reconciliation; the
+loader does not automatically delete missing source rows or retain every prior
+source version. SQLite records the latest ingestion state, not an append-only
+history. The supported parser layout is the eleven-column bilingual SRPE format
+covered by the fixture; unrelated layouts must be validated separately.
 
-```mermaid
-erDiagram
-    dim_development ||--o{ dim_property : contains
-    dim_development ||--o{ fact_sales : has
-    dim_property ||--o{ fact_sales : sold_as
-    dim_payment_term ||--o{ fact_sales : uses
+## Reproduce a small example without the website
 
-    dim_development {
-        int development_key PK
-        text development_name_en
-        text development_name_tc
-        text phase_label
-    }
-    dim_property {
-        int property_key PK
-        int development_key FK
-        text block_name
-        text floor
-        text unit
-        text property_natural_key UK
-    }
-    dim_payment_term {
-        int payment_term_key PK
-        text standard_category UK
-    }
-    fact_sales {
-        bigint sale_key PK
-        text natural_key UK
-        date pasp_date
-        date asp_date
-        date termination_date
-        bigint price_hkd
-        text transaction_status
-    }
-```
-
-**Natural key:** `development|block|floor|unit|pasp_date` — supports safe re-load when SRPE amends prices or records 撻訂.
-
-**Transaction status values:** `asp_signed` · `terminated` · `pasp_only`
-
----
-
-## Tech stack
-
-| Layer | Tools |
-|-------|-------|
-| Extract | Python, pdfplumber, Playwright, httpx, SQLite |
-| Transform | pandas, bilingual payment mapper |
-| Load | PostgreSQL 18, psycopg3, star schema, UPSERT |
-| Visualize | Excel Power Query, SQL views, pivot dashboard |
-| Config | YAML (`config/settings.yaml`), `.env` (secrets) |
-
----
-
-## Project structure
-
-```
-├── run_extract.py              # CLI: local PDF or SRPE download
-├── run_transform.py            # Clean staging → transformed CSV
-├── run_load.py                 # Init DB / schema / views / UPSERT load
-├── extract/                    # PDF parser, SRPE client, ingestion log
-├── transform/                  # Cleaners, bilingual payment mapper
-├── load/
-│   ├── schema.sql              # Star schema DDL
-│   ├── views.sql               # Reporting views
-│   ├── sample_queries.sql      # Portfolio analytics examples
-│   └── loader.py
-├── config/settings.yaml
-└── visualize/
-    ├── power_query_sales_detail.m
-    └── README.md               # Dashboard screenshot instructions
-```
-
----
-
-## Quick start
-
-### 1. Prerequisites
-
-- Python 3.11+
-- PostgreSQL 14+ (tested on PostgreSQL 18)
-- Playwright browsers (for SRPE download mode only)
-
-### 2. Install
+Prerequisites: **Python 3.12+**, PostgreSQL for the Load step. Tested on Windows,
+Python **3.13.13** and PostgreSQL **18.4**. Other Python/OS/PostgreSQL combinations
+have not been verified. The locked NumPy version requires Python 3.12+.
 
 ```powershell
 git clone https://github.com/Rickylam0303/srpe-etl-pipeline.git
 cd srpe-etl-pipeline
 python -m venv .venv
-.\.venv\Scripts\pip install -r requirements.txt
-.\.venv\Scripts\playwright install chromium
+.\.venv\Scripts\python -m pip install -r requirements-lock.txt
+.\.venv\Scripts\python -m pip check
+.\.venv\Scripts\python -m unittest discover -s tests -v
 ```
 
-### 3. Configure database
+The bundled [source-page fixture](tests/fixtures/README.md) contains **15 contract
+records** and covers the defects found during review. It needs no browser or
+network access. Use the demo config to keep these files separate from full data:
 
 ```powershell
-copy .env.example .env
-# Edit .env — set SRPE_DB_PASSWORD
+.\.venv\Scripts\python run_extract.py --config config/demo.yaml local --pdf tests/fixtures/srpe_sample.pdf
+.\.venv\Scripts\python run_transform.py --config config/demo.yaml
 ```
 
+Expected: **15 input and 15 clean rows**, zero errors, two warnings: one source
+date contradiction and one explicit PASP-not-proceeded statement. Reports are
+written beside staging and clean files under `data/demo/`.
+
+For PostgreSQL, start the local server, then configure credentials:
+
 ```powershell
-.\.venv\Scripts\python run_load.py --create-db --init-db --init-views
-.\.venv\Scripts\python run_load.py
+Copy-Item .env.example .env
+# Edit .env: set SRPE_DB_USER and SRPE_DB_PASSWORD.
+# Use a separate demo database. DATABASE_URL, if set, overrides these fields.
+$env:SRPE_DB_NAME = 'srpe_etl_demo'
+.\.venv\Scripts\python run_load.py --config config/demo.yaml --create-db --init-db --init-views
+.\.venv\Scripts\python run_load.py --config config/demo.yaml
 ```
 
-### 4. Run the pipeline
+The first command initializes and loads; repeating Load should report **0
+inserted, 15 updated**, with 15 database records. `--create-db` needs a role with
+database-creation permission; otherwise ask the database administrator to
+create the target database and omit that flag. Credentials stay in `.env`.
 
-**Option A — local PDF (no network scrape):**
+## Reproduce the full reviewed snapshot
+
+The [source manifest](docs/source_snapshot.json) identifies:
+
+- Development: **THE PAVILIA FARM III**, SRPE development ID **7705**.
+- File: `64048260626081RT.pdf`, **706 pages**, **3,427,799 bytes**.
+- SRPE submission: **2026-06-26 18:53:25 +08:00**.
+- SHA-256: `06bb7fe8fda1f6eb66ecda650e63a3cdaf2a619dd9d4141daf891fdfd903216a`.
+
+Open the [SRPE development page](https://www.srpe.gov.hk/opip/selected_dev?devId=7705)
+and retrieve this Register of Transactions version if it is still available.
+The full historical PDF is not bundled, and SRPE may only expose a newer version.
+The fixture provides a deterministic offline example when the historical file
+cannot be obtained. **A newer PDF must not be expected to reproduce these KPIs.**
 
 ```powershell
-.\.venv\Scripts\python run_extract.py local --pdf "path\to\64048260626081RT.pdf"
+Get-FileHash data/raw/pdfs/64048260626081RT.pdf -Algorithm SHA256
+.\.venv\Scripts\python run_extract.py local --pdf data/raw/pdfs/64048260626081RT.pdf
 .\.venv\Scripts\python run_transform.py
-.\.venv\Scripts\python run_load.py
+$env:SRPE_DB_NAME = 'srpe_etl'
+.\.venv\Scripts\python run_load.py --create-db --init-db --init-views
+.\.venv\Scripts\python -m visualize.report
 ```
 
-**Option B — download from SRPE:**
+To fetch the website's **current** version instead:
 
 ```powershell
+.\.venv\Scripts\python -m playwright install chromium
 .\.venv\Scripts\python run_extract.py srpe --dev-id 7705
 .\.venv\Scripts\python run_transform.py
 .\.venv\Scripts\python run_load.py
 ```
 
-### 5. Sample SQL
+Live download depends on SRPE's session, API and page layout. It has not been
+revalidated against the live website in this revision. Local PDF processing is
+the verified reproduction path. Paths are relative to the repository root;
+environment variables override YAML database settings and `DATABASE_URL`
+overrides the individual connection fields.
 
-See [`load/sample_queries.sql`](load/sample_queries.sql) for ready-to-run analytics queries (status mix, monthly volume, block pricing, payment mix).
+## Quality controls and amendment policy
 
----
+- Extract reconciles recognizable PASP dates in the first column against parsed
+  rows on each transaction page. Missing-bottom-border tables use their actual
+  column rules. Explicitly struck-out dates are excluded using PDF geometry.
+- Unresolved page counts, duplicate identities, unknown development names and
+  zero-transaction documents fail extraction before publishing staging CSVs.
+- Identifiers are read as text. Missing identities, malformed dates, nonpositive
+  prices, duplicate keys and unresolved/conflicting amendments reject the batch.
+- The latest **dated** price and payment amendment wins, regardless of text
+  order. Unknown amendment dates are errors. Full payment history and the source
+  PDF/page remain available for inspection.
+- Source date contradictions are retained and reported. Unmapped payment plans
+  are visible warnings. An explicit “PASP has not proceeded further” is kept as
+  `pasp_only`, with a warning; it is **not** described as a pending sale.
+- A failed Transform writes its report and leaves the last clean CSV unchanged.
+  Load blocks failed/stale companion reports and validates identities, dates,
+  prices and derived statuses before writing. Process failures exit nonzero.
+- Remote version metadata survives parsing. A changed remote version or local
+  file hash triggers download; absent comparable remote metadata triggers a
+  conservative refresh. Parsing failures are not marked as successful ingestion.
 
-## Dashboard (v2)
+Reports: `data/staging/*_extraction_quality.json` and
+`data/transformed/*_transactions_clean.quality.json`. Inspect the status and
+individual issues, rather than treating a successful process as a full source
+audit. Page reconciliation does not prove every field is correct.
 
-Live **Excel** dashboard connected to PostgreSQL via **Power Query** on `vw_sales_detail`.
+## Checked snapshot results and interpretation
 
-![SRPE sales dashboard](visualize/dashboard.png)
+| Metric | Corrected value |
+|---|---:|
+| Contract records | 1,183 |
+| Unique property identities | 857 |
+| ASP signed | 682 |
+| Terminated | 494 |
+| PASP only, explicitly not proceeded | 7 |
+| Terminated / all contract records | 41.76% |
+| Mean latest contract price, ASP signed only | HK$15,612,120.41 |
+| Latest Cash Payment Plan | 874 |
+| Latest Stage Payment | 302 |
+| Unmapped payment plans | 7 |
 
-### KPI snapshot — THE PAVILIA FARM III
+PASP dates run from **2021-06-05 to 2026-06-21**. Monthly reports include zero-volume
+months and keep years separate. The 2021-06 cohort has **851** records; 2026-06
+has **14**. Termination rates describe the current status of PASP cohorts in
+this snapshot, not termination events occurring in that month.
 
-| KPI | Value |
-|-----|-------|
-| Total transactions | 1,145 |
-| ASP signed | 654 |
-| Terminated (撻訂) | 483 |
-| PASP only | 8 |
-| **Termination rate** | **~42%** |
-| Avg price (HKD) | ~$15.5M |
-| Payment: Cash plan | 763 |
-| Payment: Stage payment | 375 |
+Tower 8 (8A) has the highest ASP-signed mean contract price, **HK$18.86M**.
+This is an unadjusted descriptive comparison; unit size, floor and layout are
+not controlled. It does not establish a tower premium or pricing strategy.
+Cash Payment Plan is a payment-plan label, not evidence that a buyer had no
+mortgage. No market-cycle, cash-flow or mortgage-risk conclusions are inferred.
 
-### Charts in the dashboard
+The correction recovers **38** omitted records and excludes one superseded ASP
+date, changing a previously misclassified status. The
+[payment amendment audit](docs/payment_revision_audit.csv) checks **121**
+initial-to-latest category changes, including **all 84** previously identified
+changes in the old extract. These are automated row-level source-label checks;
+selected examples were also visually inspected. There are **15 warnings**:
+seven not-proceeded statements, seven unmapped plans and one contradictory date.
 
-- Monthly transaction volume (`pasp_month`)
-- Average price by block (`block_name` × `final_price_hkd`)
-- Payment method mix (`payment_category`)
+Machine-readable results: [snapshot summary](docs/snapshot_summary.json).
+Validation evidence and limitations: [validation report](docs/VALIDATION.md).
 
-### Connect Excel to PostgreSQL
+## Tests and reports
 
-1. Install the **Npgsql** provider (required on Windows for Excel's PostgreSQL connector).
-2. **Data → Get Data → From PostgreSQL database**
-3. Server: `127.0.0.1` · Database: `srpe_etl` · User: `postgres`
-4. Load `vw_sales_detail` as a **Table** (not connection-only), then build pivot tables.
+Offline tests run from a fresh clone with the bundled fixture. Database tests
+are opt-in and create a UUID-named `srpe_test_*` database, test load/reload,
+same-key amendments, zero-month reporting and all six SQL examples, then remove
+only that test database. The role needs `CREATEDB` permission.
 
-Power Query M starter: [`visualize/power_query_sales_detail.m`](visualize/power_query_sales_detail.m)
+```powershell
+$env:SRPE_RUN_DB_TESTS = '1'
+.\.venv\Scripts\python -m unittest discover -s tests -v
+# Optional full-snapshot integration test after Extract and Transform:
+$env:SRPE_TEST_FULL_CSV = 'data/transformed/THE_PAVILIA_FARM_III_transactions_clean.csv'
+.\.venv\Scripts\python -m unittest discover -s tests -p test_postgres.py -v
+```
 
----
+Run [sample queries](load/sample_queries.sql) after initializing views. Both
+`vw_monthly_sales` and `vw_block_summary` use **ASP-signed-only** prices. All
+contract statuses remain available in `vw_sales_detail`.
 
-## Key insights (proptech)
+To rebuild the reference image from the reviewed full snapshot:
 
-From THE PAVILIA FARM III dashboard analysis:
+```powershell
+.\.venv\Scripts\python -m playwright install chromium
+.\.venv\Scripts\python -m visualize.report --png
+```
 
-1. **High termination rate (~42%)** — nearly half of recorded transactions ended in 撻訂; launch-period sales volume peaked before tapering, typical of hot new-development cycles in HK.
-2. **Tower-level price dispersion** — **Tower 8 (8A)** shows the highest average transacted price (~**HK$18.1M**), useful for block-level pricing and inventory strategy.
-3. **Payment mix skew** — cash-plan transactions dominate over stage-payment plans; relevant for developer cash-flow and mortgage-risk reporting.
+`visualize.report` verifies the source hash and companion reports before
+generating summary JSON, the payment audit and SVG/PNG. It intentionally refuses
+other source versions. Full data and local workbooks are ignored by Git.
 
-These are the kinds of metrics property research, agency data teams, and developer sales offices track from SRPE registers.
+## Author and license
 
----
+LAM Wai Kit (Ricky) — [Rickylam0303](https://github.com/Rickylam0303)
 
-## SQL views
-
-| View | Purpose |
-|------|---------|
-| `vw_sales_detail` | Denormalized transaction grain for Power Query / BI |
-| `vw_monthly_sales` | Monthly volume, termination rate, avg price |
-| `vw_block_summary` | Per-block transaction and pricing metrics |
-
----
-
-## Design decisions
-
-1. **One PDF per development** — matches SRPE publishing model; pipeline is development-scoped.
-2. **UPSERT on `natural_key`** — handles price revisions and 撻訂 without duplicate rows.
-3. **Bilingual payment mapping** — regex rules map 中文 / English terms to a single `standard_category`.
-4. **SQLite ingestion log** — lightweight audit trail (hash, page count, status); mirrors in-house ingestion workflows.
-5. **Secrets outside repo** — credentials in `.env`, never committed.
-
----
-
-## Roadmap
-
-- [x] v1 — Extract, Transform, Load
-- [x] v2 — Excel Power Query dashboard
-- [x] Portfolio README, sample SQL, schema diagram
-- [x] Add `visualize/dashboard.png` screenshot
-- [ ] Optional — text fallback parser for pages pdfplumber cannot table-extract
-- [ ] Optional — batch index over multiple HK developments
-
----
-
-## Interview talking points (2-minute pitch)
-
-1. **Problem** — SRPE publishes property transaction truth as bilingual PDFs, not clean tables.
-2. **Approach** — modular ETL (extract / transform / load), star schema, UPSERT for amendments.
-3. **Outcome** — 1,145 transactions queryable in PostgreSQL; Excel dashboard for monthly volume, termination rate, block pricing.
-4. **Why proptech** — housing is 衣食住行; this data directly affects pricing, sales strategy, and market research.
-
----
-
-## License
-
-MIT — see [LICENSE](LICENSE).
-
----
-
-## Author
-
-**LAM Wai Kit (Ricky)**
-
-- GitHub: [Rickylam0303](https://github.com/Rickylam0303)
-- Email: rickylam0303@gmail.com
-- Portfolio: Data Analyst → Data Engineer path · Hong Kong proptech / real estate data
-
-Data source: [SRPE](https://www.srpe.gov.hk) (public government data).
+Code: [MIT](LICENSE). Source material: [SRPE](https://www.srpe.gov.hk), with
+original ownership retained. Fixture provenance is documented separately.
