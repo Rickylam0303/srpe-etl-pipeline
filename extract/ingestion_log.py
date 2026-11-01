@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,7 +42,7 @@ class IngestionLog:
     return conn
 
   def _init_db(self) -> None:
-    with self._connect() as conn:
+    with closing(self._connect()) as conn:
       conn.execute(
         """
         CREATE TABLE IF NOT EXISTS ingestion_log (
@@ -70,7 +71,7 @@ class IngestionLog:
     return digest.hexdigest()
 
   def get_latest(self, development_name: str, file_name: str) -> IngestionRecord | None:
-    with self._connect() as conn:
+    with closing(self._connect()) as conn:
       row = conn.execute(
         """
         SELECT development_name, file_name, pdf_url, server_last_modified,
@@ -99,14 +100,20 @@ class IngestionLog:
     latest = self.get_latest(development_name, file_name)
     if latest is None:
       return True
+    if latest.status == 'failed':
+      return True
     if file_hash and latest.file_hash and file_hash != latest.file_hash:
       return True
     if server_last_modified and latest.server_last_modified:
-      return server_last_modified > latest.server_last_modified
-    return latest.status == "failed"
+      # A changed version (including a rollback) must be fetched. Do not rely
+      # on lexicographic ordering of a server-specific date format.
+      return server_last_modified != latest.server_last_modified
+    # No comparable remote version: refresh conservatively. A previous local
+    # hash alone says nothing about the current remote contents.
+    return True
 
   def log(self, record: IngestionRecord) -> None:
-    with self._connect() as conn:
+    with closing(self._connect()) as conn:
       conn.execute(
         """
         INSERT INTO ingestion_log (

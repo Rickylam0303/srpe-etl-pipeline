@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="880" viewBox="0 0 1280 880">
+<style>text{font-family:Arial,sans-serif;fill:#183041}.muted{fill:#526977}.grid{stroke:#dce5e9;stroke-width:1}</style>
+<rect width="1280" height="880" fill="#f3f6f8"/>
+<text x="40" y="48" font-size="28" font-weight="bold">THE PAVILIA FARM III</text>
+<text x="40" y="77" font-size="16" class="muted">Contract register | PASP 2021-06-05 to 2026-06-21 | Source submitted 2026-06-26</text>
+<rect x="40" y="102" width="285" height="95" fill="white" rx="8"/>
+<text x="58" y="133" font-size="15" class="muted">Contract records</text>
+<text x="58" y="173" font-size="30" font-weight="bold">1,183</text>
+<rect x="345" y="102" width="285" height="95" fill="white" rx="8"/>
+<text x="363" y="133" font-size="15" class="muted">ASP signed</text>
+<text x="363" y="173" font-size="30" font-weight="bold">682</text>
+<rect x="650" y="102" width="285" height="95" fill="white" rx="8"/>
+<text x="668" y="133" font-size="15" class="muted">Terminated / all records</text>
+<text x="668" y="173" font-size="30" font-weight="bold">41.76%</text>
+<rect x="955" y="102" width="285" height="95" fill="white" rx="8"/>
+<text x="973" y="133" font-size="15" class="muted">Mean price / ASP signed</text>
+<text x="973" y="173" font-size="30" font-weight="bold">HK$ 15.61M</text>
+<rect x="40" y="218" width="1200" height="285" fill="white" rx="8"/>
+<text x="62" y="248" font-size="19" font-weight="bold">Monthly contract records by PASP date</text>
+<path d="M105 450.0 H1200" class="grid"/>
+<text x="64" y="455.0" font-size="13" class="muted">0</text>
+<path d="M105 417.0 H1200" class="grid"/>
+<text x="64" y="422.0" font-size="13" class="muted">200</text>
+<path d="M105 384.0 H1200" class="grid"/>
+<text x="64" y="389.0" font-size="13" class="muted">400</text>
+<path d="M105 351.0 H1200" class="grid"/>
+<text x="64" y="356.0" font-size="13" class="muted">600</text>
+<path d="M105 318.0 H1200" class="grid"/>
+<text x="64" y="323.0" font-size="13" class="muted">800</text>
+<path d="M105 285.0 H1200" class="grid"/>
+<text x="64" y="290.0" font-size="13" class="muted">1000</text>
+<polyline fill="none" stroke="#147b91" stroke-width="3" points="105.0,309.6 123.2,449.8 141.5,450.0 159.8,450.0 178.0,450.0 196.2,450.0 214.5,450.0 232.8,450.0 251.0,450.0 269.2,450.0 287.5,450.0 305.8,450.0 324.0,450.0 342.2,450.0 360.5,450.0 378.8,450.0 397.0,450.0 415.2,450.0 433.5,450.0 451.8,450.0 470.0,450.0 488.2,450.0 506.5,450.0 524.8,450.0 543.0,450.0 561.2,450.0 579.5,450.0 597.8,450.0 616.0,450.0 634.2,450.0 652.5,450.0 670.8,450.0 689.0,450.0 707.2,450.0 725.5,450.0 743.8,450.0 762.0,450.0 780.2,450.0 798.5,450.0 816.8,450.0 835.0,450.0 853.2,450.0 871.5,450.0 889.8,450.0 908.0,450.0 926.2,450.0 944.5,450.0 962.8,450.0 981.0,450.0 999.2,450.0 1017.5,450.0 1035.8,450.0 1054.0,450.0 1072.2,450.0 1090.5,450.0 1108.8,450.0 1127.0,450.0 1145.2,450.0 1163.5,401.2 1181.8,446.5 1200.0,447.7"/>
+<text x="80.0" y="477" font-size="13" class="muted">2021-06</text>
+<text x="112.0" y="300.58500000000004" font-size="13" >2021-06: 851</text>
+<text x="299.0" y="477" font-size="13" class="muted">2022-06</text>
+<text x="518.0" y="477" font-size="13" class="muted">2023-06</text>
+<text x="737.0" y="477" font-size="13" class="muted">2024-06</text>
+<text x="956.0" y="477" font-size="13" class="muted">2025-06</text>
+<text x="1053.5" y="392.16" font-size="13" >2026-04: 296</text>
+<text x="1175.0" y="477" font-size="13" class="muted">2026-06</text>
+<rect x="40" y="525" width="590" height="265" fill="white" rx="8"/>
+<rect x="650" y="525" width="590" height="265" fill="white" rx="8"/>
+<text x="62" y="557" font-size="19" font-weight="bold">Mean contract price by block</text>
+<text x="62" y="580" font-size="14" class="muted">ASP signed only, latest revised price (HK$ million)</text>
+<text x="62" y="623" font-size="14" >Tower 1 (1A)</text>
+<rect x="180" y="605" width="263.216316825" height="25" fill="#147b91" />
+<text x="453.216316825" y="623" font-size="14" >16.71</text>
+<text x="62" y="663" font-size="14" >Tower 1 (1B)</text>
+<rect x="180" y="645" width="225.62282736" height="25" fill="#147b91" />
+<text x="415.62282736" y="663" font-size="14" >14.33</text>
+<text x="62" y="703" font-size="14" >Tower 8 (8A)</text>
+<rect x="180" y="685" width="297.0357174225" height="25" fill="#147b91" />
+<text x="487.0357174225" y="703" font-size="14" >18.86</text>
+<text x="62" y="743" font-size="14" >Tower 8 (8B)</text>
+<rect x="180" y="725" width="202.55063566500002" height="25" fill="#147b91" />
+<text x="392.550635665" y="743" font-size="14" >12.86</text>
+<text x="672" y="557" font-size="19" font-weight="bold">Latest effective payment plan</text>
+<text x="672" y="580" font-size="14" class="muted">All contract records, including terminated contracts</text>
+<text x="672" y="625" font-size="14" >Cash Payment Plan</text>
+<rect x="835" y="609" width="199.47590870667793" height="25" fill="#147b91" />
+<text x="1044.475908706678" y="627" font-size="14" >874</text>
+<text x="672" y="672" font-size="14" >Stage Payment</text>
+<rect x="835" y="656" width="68.92645815722739" height="25" fill="#d98d3b" />
+<text x="913.9264581572274" y="674" font-size="14" >302</text>
+<text x="672" y="719" font-size="14" >Unmapped</text>
+<rect x="835" y="703" width="1.5976331360946745" height="25" fill="#8c9aa3" />
+<text x="846.5976331360947" y="721" font-size="14" >7</text>
+<text x="40" y="822" font-size="14" >Status: 682 ASP signed, 494 terminated, 7 PASP only. Counts are contracts, not unique units.</text>
+<text x="40" y="849" font-size="13" class="muted">7 PASP-only records explicitly did not proceed further. 7 payment plans remain Unmapped. Source date anomaly retained.</text>
+</svg>

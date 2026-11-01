@@ -1,0 +1,10 @@
+# Offline fixture workflow. Set SRPE_DB_NAME=srpe_etl_demo before running Load.
+paths:
+  raw_pdf_dir: data/demo/raw
+  staging_dir: data/demo/staging
+  transformed_dir: data/demo/transformed
+  ingestion_log_db: data/demo/ingestion.db
+database:
+  host: localhost
+  port: 5432
+  name: srpe_etl_demo

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import csv
+import hashlib
+import json
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -23,6 +25,70 @@ LOCATION_PATTERN = re.compile(
   r"Location of the Phase\s+(.+?)(?:\s+重要告示|\s+Important Note)",
   re.DOTALL,
 )
+
+
+class ExtractionQualityError(ValueError):
+  """The source contains transactions that could not be reconciled."""
+
+
+def _effective_page(page):
+  """Exclude date tokens explicitly struck through in the source document."""
+  struck = []
+  lines = [e for e in page.edges if e['orientation'] == 'h' and e['x1'] - e['x0'] > 15]
+  for word in page.extract_words():
+    if DATE_PATTERN.fullmatch(word['text']) and any(
+      word['top'] + 1 < line['top'] < word['bottom'] - 1
+      and line['x0'] <= word['x0'] + 1 and line['x1'] >= word['x1'] - 1
+      for line in lines
+    ):
+      struck.append(word)
+  if not struck:
+    return page, []
+  def keep(obj):
+    if obj.get('object_type') != 'char':
+      return True
+    return not any(w['x0'] - .1 <= obj['x0'] <= w['x1']
+                   and w['top'] - .1 <= obj['top'] <= w['bottom'] for w in struck)
+  return page.filter(keep), [word['text'] for word in struck]
+
+
+def _candidate_count(page, text: str) -> int:
+  xs = []
+  for x in sorted(e['x0'] for e in page.edges
+                  if e['orientation'] == 'v' and e['bottom'] - e['top'] > 40):
+    if not xs or x - xs[-1] > 2:
+      xs.append(x)
+  if len(xs) >= 2:
+    return sum(bool(DATE_PATTERN.fullmatch(w['text'])) for w in page.extract_words()
+               if xs[0] - 1 <= w['x0'] and w['x1'] <= xs[1] + 1)
+  return len(re.findall(r'(?m)^\d{2}/\d{2}/\d{4}(?=\s)', text))
+
+
+def _open_table_fallback(page) -> list:
+  """Close an otherwise ruled table whose bottom border is missing.
+
+  Some SRPE rows extend beyond the declared MediaBox. Use the actual rule
+  endpoints, not a guessed row height or development-specific column offsets.
+  Only use this for pages where the ordinary table extractor found no rows.
+  """
+  verticals = [e for e in page.edges if e['orientation'] == 'v'
+               and e['bottom'] - e['top'] > 40]
+  boundaries = []
+  for x in sorted(e['x0'] for e in verticals):
+    if not boundaries or x - boundaries[-1] > 2:
+      boundaries.append(x)
+  if len(boundaries) != 12:  # eleven SRPE transaction columns
+    return []
+  top = min(e['top'] for e in verticals)
+  bottom = max(e['bottom'] for e in verticals)
+  if any(abs(e['bottom'] - bottom) > 2 for e in verticals):
+    return []
+  expanded = page.crop((page.bbox[0], page.bbox[1], page.bbox[2],
+                        max(page.bbox[3], bottom + 1)), strict=False)
+  return expanded.extract_tables({
+    'vertical_strategy': 'explicit', 'explicit_vertical_lines': boundaries,
+    'horizontal_strategy': 'explicit', 'explicit_horizontal_lines': [top, bottom],
+  })
 
 
 @dataclass
@@ -108,8 +174,10 @@ def _parse_development_from_text(text: str, pdf_name: str) -> DevelopmentInfo:
   location_tc = None
   loc_match = LOCATION_PATTERN.search(text)
   if loc_match:
-    loc_raw = loc_match.group(1).strip()
-    location_tc, location_en = _split_bilingual(loc_raw)
+    location_en = _clean(loc_match.group(1))
+  tc_location = re.search(r"期數位置\s+(.+?)(?:\n|Location of the Phase)", text)
+  if tc_location:
+    location_tc = _clean(tc_location.group(1))
 
   return DevelopmentInfo(
     development_name_en=development_name_en,
@@ -152,11 +220,15 @@ def _parse_transaction_row(
   )
 
 
-def parse_register_pdf(pdf_path: Path) -> tuple[DevelopmentInfo, list[RawTransaction]]:
+def parse_register_pdf(
+  pdf_path: Path, *, report_path: Path | None = None,
+) -> tuple[DevelopmentInfo, list[RawTransaction]]:
   """Extract development metadata and raw transaction rows from one SRPE PDF."""
   pdf_path = Path(pdf_path)
   pdf_name = pdf_path.name
   transactions: list[RawTransaction] = []
+  report = {'source_pdf': pdf_name, 'sha256': hashlib.sha256(pdf_path.read_bytes()).hexdigest(),
+            'pages': [], 'issues': [], 'status': 'failed'}
   development = DevelopmentInfo(
     development_name_en="UNKNOWN",
     development_name_tc=None,
@@ -167,32 +239,47 @@ def parse_register_pdf(pdf_path: Path) -> tuple[DevelopmentInfo, list[RawTransac
   )
 
   with pdfplumber.open(pdf_path) as pdf:
-    if not pdf.pages:
-      return development, transactions
-
-    first_page_text = pdf.pages[0].extract_text() or ""
+    first_page_text = (pdf.pages[0].extract_text() or '') if pdf.pages else ''
     development = _parse_development_from_text(first_page_text, pdf_name)
 
     for page_index, page in enumerate(pdf.pages[1:], start=2):
-      page_rows = 0
-      for table in page.extract_tables() or []:
-        for row in table:
-          if not _is_transaction_row(row):
-            continue
-          page_rows += 1
-          transactions.append(
-            _parse_transaction_row(
-              row,
-              development.development_name_en,
-              pdf_name,
-              page_index,
-            )
-          )
-      if page_rows == 0:
-        text = page.extract_text() or ""
-        if re.search(r"\d{2}/\d{2}/\d{4}", text):
-          print(f"Warning: page {page_index} has dates in text but no parsed table rows.")
+      page, struck_dates = _effective_page(page)
+      text = page.extract_text() or ''
+      candidates = _candidate_count(page, text)
+      tables = page.extract_tables() or []
+      rows = [row for table in tables for row in table if _is_transaction_row(row)]
+      fallback = False
+      if candidates and not rows:
+        fallback = True
+        tables = _open_table_fallback(page)
+        rows = [row for table in tables for row in table if _is_transaction_row(row)]
+      for row in rows:
+        transactions.append(_parse_transaction_row(
+          row, development.development_name_en, pdf_name, page_index))
+      if candidates or rows:
+        report['pages'].append({'source_page': page_index, 'candidate_rows': candidates,
+                                'parsed_rows': len(rows), 'fallback': fallback,
+                                'struck_dates_excluded': struck_dates})
+      if candidates != len(rows):
+        report['issues'].append({'source_page': page_index, 'reason': 'row_count_mismatch',
+                                 'candidate_rows': candidates, 'parsed_rows': len(rows)})
+    report['page_count'] = len(pdf.pages)
 
+  if not transactions:
+    report['issues'].append({'reason': 'no_transactions'})
+  if development.development_name_en == 'UNKNOWN':
+    report['issues'].append({'reason': 'unknown_development'})
+  identities = [(r.development_name_en, r.block_name, r.floor, r.unit, r.pasp_date)
+                for r in transactions]
+  if len(identities) != len(set(identities)):
+    report['issues'].append({'reason': 'duplicate_transaction_identity'})
+  report['transaction_count'] = len(transactions)
+  report['status'] = 'failed' if report['issues'] else 'passed'
+  if report_path:
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+  if report['issues']:
+    raise ExtractionQualityError(f"PDF reconciliation failed: {report['issues']}; report={report_path}")
   return development, transactions
 
 

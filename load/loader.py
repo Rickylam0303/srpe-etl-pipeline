@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
+import json
 
 import pandas as pd
 import psycopg
 
 from load.db import connect
+from transform.cleaners import normalize_identifier, build_natural_key, derive_transaction_status
+from datetime import date
 
 
 def _text(value) -> str | None:
@@ -28,8 +32,8 @@ def _property_natural_key(development_name: str, block_name: str, floor, unit) -
     [
       development_name.strip(),
       str(block_name).strip(),
-      str(floor).strip(),
-      str(unit).strip(),
+      normalize_identifier(floor) or '',
+      normalize_identifier(unit) or '',
     ]
   )
 
@@ -168,7 +172,7 @@ def load_development_metadata(
 ) -> int | None:
   matches = list(staging_dir.glob("*_development.csv"))
   for path in matches:
-    dev_df = pd.read_csv(path, encoding="utf-8-sig")
+    dev_df = pd.read_csv(path, encoding="utf-8-sig", dtype=str, keep_default_na=False)
     if dev_df.empty:
       continue
     row = dev_df.iloc[0]
@@ -182,9 +186,41 @@ def load_transformed_csv(
   transformed_csv: Path,
   staging_dir: Path,
 ) -> dict[str, int]:
-  df = pd.read_csv(transformed_csv, encoding="utf-8-sig")
+  report_path = transformed_csv.with_suffix('.quality.json')
+  if report_path.exists():
+    report = json.loads(report_path.read_text(encoding='utf-8'))
+    if report.get('status') != 'passed' or report.get('output_sha256') != hashlib.sha256(transformed_csv.read_bytes()).hexdigest():
+      raise ValueError(f'Failed or stale transform quality report: {report_path}')
+    source_csv = Path(report['source_csv']) if report.get('source_csv') else None
+    if source_csv and (not source_csv.exists() or hashlib.sha256(source_csv.read_bytes()).hexdigest() != report.get('source_sha256')):
+      raise ValueError(f'Staging changed after transform: {source_csv}')
+  df = pd.read_csv(transformed_csv, encoding="utf-8-sig", dtype=str, keep_default_na=False)
   if df.empty:
     return {"rows": 0, "inserted": 0, "updated": 0}
+
+  for filename in df['source_pdf'].unique():
+    extraction_path = staging_dir / f'{Path(filename).stem}_extraction_quality.json'
+    if extraction_path.exists() and json.loads(extraction_path.read_text(encoding='utf-8')).get('status') != 'passed':
+      raise ValueError(f'Unresolved extraction quality report: {extraction_path}')
+
+  if df['development_name_en'].nunique() != 1 or df['natural_key'].duplicated().any():
+    raise ValueError('Load requires one development and unique transaction keys per file')
+  for _, row in df.iterrows():
+    if any(not str(row[c]).strip() for c in ['block_name', 'floor', 'unit', 'development_name_en']):
+      raise ValueError('Missing property identity')
+    dates = {c: date.fromisoformat(row[c]) if row[c] else None
+             for c in ['pasp_date', 'asp_date', 'termination_date']}
+    expected_key = build_natural_key(development_name=row['development_name_en'],
+      block_name=row['block_name'], floor=row['floor'], unit=row['unit'], pasp_date=dates['pasp_date'])
+    status = derive_transaction_status(termination_date=dates['termination_date'],
+      asp_date=dates['asp_date'], pasp_date=dates['pasp_date'])
+    if not dates['pasp_date'] or expected_key != row['natural_key'] or status != row['transaction_status']:
+      raise ValueError('Inconsistent transaction identity or status')
+    if int(row['price_hkd']) <= 0 or (row['revised_price_hkd'] and int(row['revised_price_hkd']) <= 0):
+      raise ValueError('Contract prices must be positive integers')
+  df['revised_price_hkd'] = df['revised_price_hkd'].replace('', None)
+  df['asp_date'] = df['asp_date'].replace('', None)
+  df['termination_date'] = df['termination_date'].replace('', None)
 
   development_name = df.iloc[0]["development_name_en"]
   inserted = 0

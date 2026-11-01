@@ -1,8 +1,4 @@
-"""Download SRPE Register of Transactions PDFs (skeleton for next step).
-
-For now, use a local PDF path. SRPE site crawling will be added once the
-parser output is validated against real files.
-"""
+"""PDF download helpers and registration of successfully parsed local files."""
 
 from __future__ import annotations
 
@@ -57,11 +53,16 @@ def register_local_pdf(
   ingestion_log: IngestionLog,
   development_name: str,
   pdf_url: str | None = None,
+  server_last_modified: str | None = None,
 ) -> DownloadResult:
   """Record a manually downloaded PDF in the ingestion log."""
   pdf_path = Path(pdf_path)
   file_name = pdf_path.name
   file_hash = IngestionLog.file_hash(pdf_path)
+  latest = ingestion_log.get_latest(development_name, file_name)
+  if latest and latest.file_hash == file_hash:
+    pdf_url = pdf_url or latest.pdf_url
+    server_last_modified = server_last_modified or latest.server_last_modified
 
   import pdfplumber
 
@@ -73,7 +74,7 @@ def register_local_pdf(
       development_name=development_name,
       file_name=file_name,
       pdf_url=pdf_url,
-      server_last_modified=None,
+      server_last_modified=server_last_modified,
       file_hash=file_hash,
       status="extracted",
       page_count=page_count,

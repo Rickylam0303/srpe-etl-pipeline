@@ -1,0 +1,13 @@
+{
+  "development": "THE PAVILIA FARM III",
+  "dev_id": "7705",
+  "source_page": "https://www.srpe.gov.hk/opip/selected_dev?devId=7705",
+  "file_name": "64048260626081RT.pdf",
+  "submission_time": "2026-06-26T18:53:25.000+08:00",
+  "sha256": "06bb7fe8fda1f6eb66ecda650e63a3cdaf2a619dd9d4141daf891fdfd903216a",
+  "bytes": 3427799,
+  "page_count": 706,
+  "expected_transactions": 1183,
+  "previously_missed_pages": [11,14,17,18,21,24,27,40,45,49,93,96,98,116,118,122,142,155,163,170,183,193,199,215,243,301,324,338,368,451,468,493,514,546,550,561,564,582],
+  "availability": "Full historical PDF is not bundled. Retrieve from SRPE if this version remains available; a newer file must not be described as the same snapshot. Offline regression pages are bundled in tests/fixtures/srpe_sample.pdf."
+}

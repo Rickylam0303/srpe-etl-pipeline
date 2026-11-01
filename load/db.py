@@ -6,6 +6,8 @@ import os
 from dataclasses import dataclass
 
 import psycopg
+from psycopg import sql
+from psycopg.conninfo import make_conninfo, conninfo_to_dict
 
 
 @dataclass
@@ -35,10 +37,8 @@ class DatabaseConfig:
       raise ValueError(
         "Database user not set. Export SRPE_DB_USER and SRPE_DB_PASSWORD, or set DATABASE_URL."
       )
-    return (
-      f"host={self.host} port={self.port} dbname={self.name} "
-      f"user={self.user} password={self.password}"
-    )
+    return make_conninfo(host=self.host, port=self.port, dbname=self.name,
+                         user=self.user, password=self.password)
 
 
 def connect(settings: dict) -> psycopg.Connection:
@@ -65,22 +65,12 @@ def init_views(settings: dict, views_path) -> None:
 def ensure_database(settings: dict) -> None:
   """Create the target database if it does not exist yet."""
   config = DatabaseConfig.from_settings(settings)
-  if not config.user:
-    raise ValueError(
-      "Database user not set. Export SRPE_DB_USER and SRPE_DB_PASSWORD, or set DATABASE_URL."
-    )
-  if not config.password:
-    raise ValueError(
-      "Database password not set. Edit .env and set SRPE_DB_PASSWORD, then rerun setup_load.ps1."
-    )
-
-  maintenance_conninfo = (
-    f"host={config.host} port={config.port} dbname=postgres "
-    f"user={config.user} password={config.password}"
-  )
+  target_conninfo = config.conninfo()
+  target_name = conninfo_to_dict(target_conninfo).get('dbname', config.name)
+  maintenance_conninfo = make_conninfo(target_conninfo, dbname='postgres')
   with psycopg.connect(maintenance_conninfo, autocommit=True) as conn:
     with conn.cursor() as cur:
-      cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (config.name,))
+      cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (target_name,))
       if cur.fetchone():
         return
-      cur.execute(f'CREATE DATABASE "{config.name}"')
+      cur.execute(sql.SQL('CREATE DATABASE {}').format(sql.Identifier(target_name)))
