@@ -7,9 +7,6 @@ star schema, SQL reports, and an Excel Power Query dashboard.
 It demonstrates PDF extraction, source reconciliation, dated amendment handling,
 data-quality reporting, relational modeling, UPSERT loading and descriptive analysis.
 
-For a quick review: [one-page project brief](docs/PORTFOLIO.md),
-[resume descriptions](docs/RESUME.md), and [interview walkthrough](docs/INTERVIEW.md).
-
 ![Checked reference dashboard](visualize/dashboard.png)
 
 The image is reproducibly rendered from the checked clean CSV by

@@ -30,3 +30,8 @@ visualize/*.xlsm
 SRPE_Dashboard.xlsx
 *.xlsx
 *.xlsm
+
+# Personal application materials: keep local only
+/docs/PORTFOLIO.md
+/docs/RESUME.md
+/docs/INTERVIEW.md
